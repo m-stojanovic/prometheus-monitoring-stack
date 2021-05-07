@@ -1,0 +1,111 @@
+version: '3.7'
+
+services:
+
+  prometheus:
+    image: prom/prometheus:v2.1.0
+    container_name: prometheus
+    hostname: prometheus
+    restart: unless-stopped
+    volumes:
+      - ./prometheus/:/etc/prometheus/
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--web.enable-admin-api'
+    ports:
+      - 9090:9090
+    links:
+      - cadvisor-devops:cadvisor-devops
+      - alertmanager:alertmanager
+
+  node-exporter-devops:
+    image: prom/node-exporter
+    container_name: node-exporter-devops
+    hostname: node-exporter-devops
+    restart: unless-stopped
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - --collector.filesystem.ignored-mount-points
+      - "^/(sys|proc|dev|host|etc|rootfs/var/lib/docker/containers|rootfs/var/lib/docker/overlay2|rootfs/run/docker/netns|rootfs/var/lib/docker/aufs)($$|/)"
+    ports:
+      - 9100:9100
+
+  alertmanager:
+    image: prom/alertmanager
+    container_name: alertmanager
+    hostname: alertmanager
+    restart: unless-stopped
+    ports:
+      - 9093:9093
+    volumes:
+      - ./alertmanager/:/etc/alertmanager/
+      - alertmanager_data:/alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/config.yml'
+      - '--storage.path=/alertmanager'
+
+  cadvisor-devops:
+    image: google/cadvisor
+    container_name: cadvisor-devops
+    hostname: cadvisor-devops
+    restart: unless-stopped
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:rw
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    ports:
+      - 8080:8080
+
+  grafana:
+    image: grafana/grafana
+    container_name: grafana
+    hostname: grafana_server
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+    volumes:
+      - "config:/etc/grafana"
+      - "share:/usr/share/grafana"
+      - "log:/var/log/grafana"
+      - "lib:/var/lib/grafana"
+    env_file:
+      - ./grafana/config.monitoring
+    depends_on:
+      - prometheus
+
+ prometheus-msteams:
+   image: docker.io/bzon/prometheus-msteams:v1.1.4
+   container_name: prometheus-msteams
+   hostname: prometheus-msteams
+   restart: unless-stopped
+   volumes:
+     - ./prometheus-msteams/:/tmp/
+   environment:
+     - TEAMS_INCOMING_WEBHOOK_URL=your_web_hook_url
+     - TEAMS_REQUEST_URI=alertmanager
+     - TEMPLATE_FILE=/tmp/card.tmpl
+   ports:
+     - 2000:2000
+
+volumes:
+    prometheus_data: {}
+    alertmanager_data: {}
+    config: {}
+    share: {}
+    log: {}
+    lib: {}
+
+networks:
+  default:
+    external:
+      name: monitoring_stack
